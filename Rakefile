@@ -1,2 +1,8 @@
 require "bundler/gem_tasks"
-task :default => :spec
+
+desc "Run the integration tests"
+task :test do
+  ruby "test/integration_test.rb"
+end
+
+task :default => :test

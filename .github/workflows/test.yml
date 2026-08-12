@@ -1,0 +1,34 @@
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    name: Ruby ${{ matrix.ruby }} / Bundler ${{ matrix.bundler }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        ruby: ['3.2', '3.3', '3.4', '4.0']
+        bundler: ['2.5.22', '2.6.9', 'latest']
+        include:
+          - os: macos-latest
+            ruby: '4.0'
+            bundler: 'latest'
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler: ${{ matrix.bundler }}
+
+      - run: bundle --version
+
+      # Note this intentionally does not run through bundler, since the tests
+      # shell out to "bundle install" in a temporary app of their own
+      - run: ruby test/integration_test.rb
