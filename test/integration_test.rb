@@ -38,18 +38,7 @@ class IntegrationTest < Minitest::Test
   def setup
     @app = Dir.mktmpdir('bundler-source-pathext-')
     FileUtils.cp_r(FIXTURE, File.join(@app, 'mygem'))
-
-    # The plugin has to be declared before the source that uses it, otherwise
-    # Bundler infers it from the source type and installs it from RubyGems.
-    File.write(File.join(@app, 'Gemfile'), <<~GEMFILE)
-      source "https://rubygems.org"
-
-      plugin "bundler-source-pathext", path: #{PLUGIN_ROOT.inspect}
-
-      source "./mygem", type: "pathext" do
-        gem "mygem"
-      end
-    GEMFILE
+    write_gemfile
   end
 
   def teardown
@@ -79,6 +68,25 @@ class IntegrationTest < Minitest::Test
     assert_equal 'rebuilt', built_marker
   end
 
+  # The source path in the Gemfile is relative to the Gemfile, not to wherever
+  # bundler happens to be run from.
+  def test_installs_when_run_from_a_subdirectory_of_the_app
+    subdirectory = File.join(@app, 'subdirectory')
+    FileUtils.mkdir(subdirectory)
+    run!('bundle', 'install', chdir: subdirectory)
+
+    assert_path_exists File.join(@app, 'mygem', 'lib', 'mygem', "mygem_native.#{RbConfig::CONFIG["DLEXT"]}")
+    assert_equal 'built', built_marker
+  end
+
+  # A single source can cover multiple gem directories through a glob
+  def test_supports_a_glob_as_the_source_path
+    write_gemfile(source_path: './{mygem,another-gem}')
+    bundle 'install'
+
+    assert_equal 'built', built_marker
+  end
+
   # Bundler 2.6 and newer skip plugins whose load paths don't exist, so every
   # require path the gemspec declares needs to be part of the built gem.
   def test_packaged_gem_ships_every_require_path_it_declares
@@ -96,6 +104,20 @@ class IntegrationTest < Minitest::Test
   end
 
   private
+
+  # The plugin has to be declared before the source that uses it, otherwise
+  # Bundler infers it from the source type and installs it from RubyGems.
+  def write_gemfile(source_path: './mygem')
+    File.write(File.join(@app, 'Gemfile'), <<~GEMFILE)
+      source "https://rubygems.org"
+
+      plugin "bundler-source-pathext", path: #{PLUGIN_ROOT.inspect}
+
+      source #{source_path.inspect}, type: "pathext" do
+        gem "mygem"
+      end
+    GEMFILE
+  end
 
   def built_marker
     bundle('exec', 'ruby', '-e', 'require "mygem"; print MyGemNative::BUILT').strip
