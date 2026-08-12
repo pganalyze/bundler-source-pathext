@@ -1,12 +1,17 @@
 # frozen_string_literal: true
 
 require 'fileutils'
+require 'rubygems/ext'
 
 class BundlerSourcePathext < Bundler::Plugin::API
+  # Gem::Ext::Builder gained a target_rbconfig argument (for cross-compilation)
+  # in Rubygems 3.6, and an n_jobs keyword argument in Rubygems 4.0.2
   HAS_TARGET_RBCONFIG = Gem.rubygems_version >= Gem::Version.new("3.6")
   HAS_NJOBS = Gem.rubygems_version >= Gem::Version.new("4.0.2")
 
   class PathExtSource < Bundler::Source
+    # Called by Bundler once per gem that gets installed from this source.
+    #
     # Note that `opts` are the install options passed in by Bundler (:build_args,
     # :previous_spec, ...), whereas `options` are the source options that came
     # from the Gemfile or the lockfile.
@@ -14,7 +19,10 @@ class BundlerSourcePathext < Bundler::Plugin::API
       using_message = "Using #{version_message(spec, opts[:previous_spec])} from #{self}"
       using_message += " and installing its executables" unless spec.executables.empty?
       print_using_message using_message
-      generate_bin(spec, disable_extensions: true) # Turned off!
+
+      # Bundler's installer would build the extensions into the regular extension
+      # directory, we build them ourselves below instead
+      generate_bin(spec, disable_extensions: true)
 
       build_local_extensions(spec, opts[:build_args])
 
@@ -40,37 +48,17 @@ class BundlerSourcePathext < Bundler::Plugin::API
       end
     end
 
-    # Set internal representation to fetch the gems/specs locally.
+    # The gems are always used in place, so there is nothing to fetch, cache or
+    # refresh here - all of these are intentional no-ops:
     #
-    # When this is called, the source should try to fetch the specs and
-    # install from the local system.
-    def local!
-      # not applicable
-    end
-
-    # Set internal representation to fetch the gems/specs from remote.
-    #
-    # When this is called, the source should try to fetch the specs and
-    # install from remote path.
-    def remote!
-      # not applicable
-    end
-
-    # Set internal representation to fetch the gems/specs from app cache.
-    #
-    # When this is called, the source should try to fetch the specs and
-    # install from the path provided by `app_cache_path`.
-    def cached!
-      # not applicable
-    end
-
-    # This is called to update the spec and installation.
-    #
-    # If the source plugin is loaded from lockfile or otherwise, it shall
-    # refresh the cache/specs (e.g. git sources can make a fresh clone).
-    def unlock!
-      # not applicable
-    end
+    # local!  - fetch the specs and install from the local system
+    # remote! - fetch the specs and install from a remote path
+    # cached! - fetch the specs and install from `app_cache_path`
+    # unlock! - refresh the cache/specs (e.g. git sources make a fresh clone)
+    def local!; end
+    def remote!; end
+    def cached!; end
+    def unlock!; end
 
     private
 
@@ -151,7 +139,7 @@ class BundlerSourcePathext < Bundler::Plugin::API
         end
       end
 
-      installer = Path::Installer.new(
+      installer = Bundler::Source::Path::Installer.new(
         spec,
         env_shebang: false,
         disable_extensions: options[:disable_extensions],
@@ -177,7 +165,6 @@ class BundlerSourcePathext < Bundler::Plugin::API
   # Modified version of Gem::Ext::ExtConfBuilder that always copies the built binary
   # to the destination path. This is necessary because when using local gems we cannot
   # rely on versions being bumped when the gem changes.
-  require 'rubygems/ext'
   class ExtConfAlwaysCopyBuilder < Gem::Ext::Builder
     def self.build(extension, dest_path, results, args = [], lib_dir = nil, extension_dir = Dir.pwd,
       target_rbconfig = nil, n_jobs: nil)
