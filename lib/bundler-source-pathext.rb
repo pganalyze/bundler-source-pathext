@@ -1,3 +1,7 @@
+# frozen_string_literal: true
+
+require 'fileutils'
+
 class BundlerSourcePathext < Bundler::Plugin::API
   HAS_TARGET_RBCONFIG = Gem.rubygems_version >= Gem::Version.new("3.6")
   HAS_NJOBS = Gem.rubygems_version >= Gem::Version.new("4.0.2")
