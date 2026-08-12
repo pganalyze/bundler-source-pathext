@@ -90,10 +90,10 @@ class BundlerSourcePathext < Bundler::Plugin::API
       return if spec.extensions.empty?
 
       if build_args.empty?
-        puts "Building native extensions for #{spec.name}. This could take a while..."
+        Bundler.ui.info "Building native extensions for #{spec.name}. This could take a while..."
       else
-        puts "Building native extensions for #{spec.name} with: '#{build_args.join " "}'"
-        puts "This could take a while..."
+        Bundler.ui.info "Building native extensions for #{spec.name} with: '#{build_args.join " "}'"
+        Bundler.ui.info "This could take a while..."
       end
 
       dest_path = spec.extension_dir
@@ -109,7 +109,7 @@ class BundlerSourcePathext < Bundler::Plugin::API
         # This throws a Gem::Ext::BuildError if building the extension fails
         build_extension spec, builder, builder_for_ext, extension, dest_path, build_args
       end
-      puts format('  Finished %s after %0.2f seconds', spec.name, Time.now - start)
+      Bundler.ui.info format('  Finished %s after %0.2f seconds', spec.name, Time.now - start)
       FileUtils.touch(spec.gem_build_complete_path)
     end
 
