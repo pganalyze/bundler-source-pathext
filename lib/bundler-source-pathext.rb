@@ -22,7 +22,9 @@ class BundlerSourcePathext < Bundler::Plugin::API
 
     # Bundler plugin api, we need to return a Bundler::Index
     def specs
-      files = Dir.glob(File.join(File.expand_path(uri), '*.gemspec'))
+      # A relative path in the Gemfile is relative to the Gemfile itself (i.e.
+      # the bundler root), and not to the directory bundler was run from
+      files = Dir.glob(File.join(File.expand_path(uri, root), '*.gemspec'))
 
       Bundler::Index.build do |index|
         files.each do |file|
