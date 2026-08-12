@@ -87,6 +87,16 @@ class IntegrationTest < Minitest::Test
     assert_equal 'built', built_marker
   end
 
+  # Build args configured through "bundle config build.GEM" are passed to the
+  # source by Bundler, and have to make it all the way to extconf.
+  def test_passes_configured_build_args_to_the_extension_build
+    bundle 'config', 'set', '--local', 'build.mygem', '--with-marker=42'
+    output = bundle 'install'
+
+    assert_equal '--with-marker=42', File.read(File.join(@app, 'mygem', 'ext', 'mygem', 'build_args.txt'))
+    assert_includes output, "with: '--with-marker=42'"
+  end
+
   # Bundler 2.6 and newer skip plugins whose load paths don't exist, so every
   # require path the gemspec declares needs to be part of the built gem.
   def test_packaged_gem_ships_every_require_path_it_declares

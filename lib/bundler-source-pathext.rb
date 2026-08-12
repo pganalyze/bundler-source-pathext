@@ -7,15 +7,16 @@ class BundlerSourcePathext < Bundler::Plugin::API
   HAS_NJOBS = Gem.rubygems_version >= Gem::Version.new("4.0.2")
 
   class PathExtSource < Bundler::Source
-    def install(spec, opts)
-      print_using_message "Using #{spec.name} #{spec.version} from #{self}"
-
-      using_message = "Using #{version_message(spec, options[:previous_spec])} from #{self}"
+    # Note that `opts` are the install options passed in by Bundler (:build_args,
+    # :previous_spec, ...), whereas `options` are the source options that came
+    # from the Gemfile or the lockfile.
+    def install(spec, opts = {})
+      using_message = "Using #{version_message(spec, opts[:previous_spec])} from #{self}"
       using_message += " and installing its executables" unless spec.executables.empty?
       print_using_message using_message
       generate_bin(spec, disable_extensions: true) # Turned off!
 
-      build_local_extensions(spec)
+      build_local_extensions(spec, opts[:build_args])
 
       nil # no post-install message
     end
@@ -73,11 +74,12 @@ class BundlerSourcePathext < Bundler::Plugin::API
 
     private
 
-    def build_local_extensions(spec)
-      build_args = options[:build_args] || Bundler.rubygems.build_args || begin
-        require_relative "command"
-        Gem::Command.build_args
-      end
+    def build_local_extensions(spec, build_args = nil)
+      # Bundler passes in whatever "bundle config build.GEM" is set to, and the
+      # source options allow setting build args for all gems of a source
+      build_args = Array(build_args)
+      build_args = Array(options['build_args']) if build_args.empty?
+      build_args = Array(Bundler.rubygems.build_args) if build_args.empty?
 
       builder = Gem::Ext::Builder.new spec, build_args
 
@@ -90,7 +92,7 @@ class BundlerSourcePathext < Bundler::Plugin::API
       if build_args.empty?
         puts "Building native extensions for #{spec.name}. This could take a while..."
       else
-        puts "Building native extensions for #{spec.name} with: '#{@build_args.join " "}'"
+        puts "Building native extensions for #{spec.name} with: '#{build_args.join " "}'"
         puts "This could take a while..."
       end
 
@@ -105,13 +107,13 @@ class BundlerSourcePathext < Bundler::Plugin::API
                           end
 
         # This throws a Gem::Ext::BuildError if building the extension fails
-        build_extension spec, builder, builder_for_ext, extension, dest_path
+        build_extension spec, builder, builder_for_ext, extension, dest_path, build_args
       end
       puts format('  Finished %s after %0.2f seconds', spec.name, Time.now - start)
       FileUtils.touch(spec.gem_build_complete_path)
     end
 
-    def build_extension(spec, builder, builder_for_ext, extension, dest_path) # :nodoc:
+    def build_extension(spec, builder, builder_for_ext, extension, dest_path, build_args) # :nodoc:
       results = []
 
       extension_dir =
@@ -122,7 +124,7 @@ class BundlerSourcePathext < Bundler::Plugin::API
         FileUtils.mkdir_p dest_path
 
         results = builder_for_ext.build(extension, dest_path,
-                                        results, @build_args, lib_dir, extension_dir)
+                                        results, build_args, lib_dir, extension_dir)
 
         builder.verbose { results.join("\n") }
 
