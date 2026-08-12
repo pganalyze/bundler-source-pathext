@@ -97,6 +97,22 @@ class IntegrationTest < Minitest::Test
     assert_includes output, "with: '--with-marker=42'"
   end
 
+  # Rubygems only places a copy of the extension in the gem's lib directory when
+  # install_extension_in_lib is enabled, so without it the extension directory
+  # has to receive the build, or nothing would be installed at all.
+  def test_installs_into_the_extension_directory_when_rubygems_does_not_use_lib
+    gemrc = File.join(@app, 'gemrc')
+    File.write(gemrc, ":install_extension_in_lib: false\n")
+    skip 'this Rubygems version does not let us turn off install_extension_in_lib' unless extension_in_lib_disabled?(gemrc)
+
+    bundle 'install', env: { 'GEMRC' => gemrc }
+
+    extension_dir = File.join(@app, 'mygem', 'tmp', RUBY_PLATFORM, 'mygem', RUBY_VERSION)
+    assert_path_exists File.join(extension_dir, 'mygem', "mygem_native.#{RbConfig::CONFIG["DLEXT"]}")
+    refute_path_exists File.join(@app, 'mygem', 'lib', 'mygem', "mygem_native.#{RbConfig::CONFIG["DLEXT"]}")
+    assert_equal 'built', built_marker
+  end
+
   # Bundler 2.6 and newer skip plugins whose load paths don't exist, so every
   # require path the gemspec declares needs to be part of the built gem.
   def test_packaged_gem_ships_every_require_path_it_declares
@@ -129,16 +145,22 @@ class IntegrationTest < Minitest::Test
     GEMFILE
   end
 
+  # Rubygems only reads install_extension_in_lib from the config file since 3.6
+  def extension_in_lib_disabled?(gemrc)
+    output, = Open3.capture2e(UNSET_ENV.merge('GEMRC' => gemrc), RbConfig.ruby, '-e', 'print Gem.install_extension_in_lib')
+    output == 'false'
+  end
+
   def built_marker
     bundle('exec', 'ruby', '-e', 'require "mygem"; print MyGemNative::BUILT').strip
   end
 
-  def bundle(*args)
-    run!('bundle', *args, chdir: @app)
+  def bundle(*args, env: {})
+    run!('bundle', *args, chdir: @app, env: env)
   end
 
-  def run!(*command, chdir:)
-    output, status = Open3.capture2e(UNSET_ENV, *command, chdir: chdir)
+  def run!(*command, chdir:, env: {})
+    output, status = Open3.capture2e(UNSET_ENV.merge(env), *command, chdir: chdir)
     assert status.success?, "`#{command.join(" ")}` failed with #{status.exitstatus}:\n#{output}"
     output
   end

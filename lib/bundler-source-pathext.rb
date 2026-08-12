@@ -225,22 +225,33 @@ class BundlerSourcePathext < Bundler::Plugin::API
         full_tmp_dest = File.join(extension_dir, tmp_dest_relative)
 
         is_cross_compiling = HAS_TARGET_RBCONFIG && target_rbconfig["platform"] != RbConfig::CONFIG["platform"]
-        # Do not copy extension libraries by default when cross-compiling
-        # not to conflict with the one already built for the host platform.
-        if Gem.install_extension_in_lib && lib_dir && !is_cross_compiling
-          FileUtils.mkdir_p lib_dir
-          entries = Dir.entries(full_tmp_dest) - %w[. ..]
-          entries = entries.map {|entry| File.join full_tmp_dest, entry }
-          FileUtils.cp_r entries, lib_dir, remove_destination: true
-        end
+
+        entries = (Dir.entries(full_tmp_dest) - %w[. ..]).map {|entry| File.join full_tmp_dest, entry }
 
         # MODIFIED
-        # We skip installing into the destination directory, because we can rely on the copy in lib/ instead
-        # This also causes caching issues with stale files
-        #FileUtils::Entry_.new(full_tmp_dest).traverse do |ent|
-        #  destent = ent.class.new(dest_path, ent.rel)
-        #  destent.exist? || FileUtils.mv(ent.path, destent.path)
-        #end
+        # Rubygems copies the built files into the gem's lib directory, and then
+        # additionally moves them into the extension install directory, but only
+        # the ones that don't exist there yet. We install into a single location,
+        # always overwriting, so a rebuilt extension leaves no stale binary behind.
+        #
+        # Note that install_extension_in_lib can be turned off through gemrc, and
+        # that Rubygems intends to eventually default it to false, which would
+        # make the extension directory the regular case rather than a fallback.
+        #
+        # Rubygems skips the copy into lib when cross-compiling, because that
+        # directory is shared with the build for the host platform, and relies on
+        # the extension install directory being specific to the target (it follows
+        # Gem::Platform.local, which is derived from the target rbconfig). The
+        # directory we use is keyed to the platform of the running Ruby, so we
+        # have nowhere to put a cross-compiled build, and skip it entirely.
+        unless is_cross_compiling
+          if Gem.install_extension_in_lib && lib_dir
+            FileUtils.mkdir_p lib_dir
+            FileUtils.cp_r entries, lib_dir, remove_destination: true
+          else
+            FileUtils.cp_r entries, dest_path, remove_destination: true
+          end
+        end
 
         if HAS_TARGET_RBCONFIG
           make dest_path, results, extension_dir, tmp_dest_relative, ["clean"], target_rbconfig: target_rbconfig
