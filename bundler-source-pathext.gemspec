@@ -1,12 +1,15 @@
 Gem::Specification.new do |spec|
   spec.name          = "bundler-source-pathext"
-  spec.version       = "0.3.0"
+  spec.version       = "0.4.0"
   spec.authors       = ["pganalyze Team"]
   spec.email         = ["team@pganalyze.com"]
 
-  spec.summary = ''
-  spec.description = ''
-  spec.required_ruby_version = Gem::Requirement.new(">= 2.3.0")
+  spec.summary = 'Bundler source plugin for local gems with native extensions'
+  spec.description = 'Bundler source plugin that works like a path source, but also builds the ' \
+                     'native extensions of the gems it provides, like a remote gem source does.'
+  spec.homepage = 'https://github.com/pganalyze/bundler-path-build-ext'
+  spec.license = 'BSD-3-Clause'
+  spec.required_ruby_version = Gem::Requirement.new(">= 2.7.0")
 
   # Specify which files should be added to the gem when it is released.
   # The `git ls-files -z` loads the files in the RubyGem that have been added into git.
