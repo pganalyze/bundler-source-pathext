@@ -10,6 +10,27 @@ class BundlerSourcePathext < Bundler::Plugin::API
   HAS_NJOBS = Gem.rubygems_version >= Gem::Version.new("4.0.2")
 
   class PathExtSource < Bundler::Source
+    # Where each source's relative path is resolved from, keyed by its uri.
+    #
+    # Bundler builds a source twice: once from the Gemfile, and once from the
+    # lockfile, and it keeps the latter (see Definition#converge_sources). The
+    # lockfile records nothing but the relative remote, so the rebuilt source
+    # cannot tell which Gemfile that path was written in - but the Gemfile is
+    # always evaluated before the lockfile is parsed, so the copy that does know
+    # leaves the answer here for the copy that doesn't.
+    ROOT_PATHS = {}
+
+    # Bundler hands its own path source the directory that relative paths are
+    # resolved against, as "root_path", but it does not do so for plugin sources,
+    # so we work it out ourselves below. Accepting the option regardless means we
+    # pick it up for free if Bundler ever starts passing it.
+    def initialize(opts)
+      super
+      root_path = opts['root_path'] || declaring_gemfile_dir(caller_locations)
+      ROOT_PATHS[uri] = root_path if root_path
+      @root_path = ROOT_PATHS[uri] || root
+    end
+
     # Called by Bundler once per gem that gets installed from this source.
     #
     # Note that `opts` are the install options passed in by Bundler (:build_args,
@@ -31,9 +52,9 @@ class BundlerSourcePathext < Bundler::Plugin::API
 
     # Bundler plugin api, we need to return a Bundler::Index
     def specs
-      # A relative path in the Gemfile is relative to the Gemfile itself (i.e.
-      # the bundler root), and not to the directory bundler was run from
-      files = Dir.glob(File.join(File.expand_path(uri, root), '*.gemspec'))
+      # A relative path in the Gemfile is relative to the Gemfile itself, and not
+      # to the directory bundler was run from
+      files = Dir.glob(File.join(File.expand_path(uri, @root_path), '*.gemspec'))
 
       Bundler::Index.build do |index|
         files.each do |file|
@@ -61,6 +82,28 @@ class BundlerSourcePathext < Bundler::Plugin::API
     def unlock!; end
 
     private
+
+    # Bundler.root is the directory of the Gemfile bundler was pointed at, which
+    # is not necessarily the one that declared this source: a wrapper Gemfile
+    # that pulls the real one in through eval_gemfile (as the Ruby LSP and
+    # Appraisal do) moves the root into its own directory, while the source path
+    # still refers to the Gemfile it was written in.
+    #
+    # Bundler evaluates every Gemfile with `instance_eval(contents, gemfile_path)`,
+    # so while a source is being declared the Gemfile is the innermost frame
+    # outside of bundler, and its caller is bundler's DSL. Requiring both keeps
+    # an ordinary bundler stack from being mistaken for a Gemfile: a source
+    # rebuilt from the lockfile has no Gemfile frame, and falls back to the root.
+    def declaring_gemfile_dir(locations)
+      dsl = Bundler::Dsl.instance_method(:eval_gemfile).source_location.first
+      bundler_lib = File.dirname(File.dirname(dsl)) + File::SEPARATOR
+
+      index = locations.index { |location| !location.path.start_with?(bundler_lib) }
+      return if index.nil? || index.zero?
+      return unless locations[index - 1].path == dsl
+
+      File.dirname(File.expand_path(locations[index].path))
+    end
 
     def build_local_extensions(spec, build_args = nil)
       # Bundler passes in whatever "bundle config build.GEM" is set to, and the
