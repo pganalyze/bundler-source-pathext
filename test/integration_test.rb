@@ -79,6 +79,22 @@ class IntegrationTest < Minitest::Test
     assert_equal 'built', built_marker
   end
 
+  # Tools like the Ruby LSP and Appraisal wrap the app's Gemfile in one of their
+  # own, which lives in a subdirectory and pulls the real one in through
+  # eval_gemfile. That moves the bundler root into the subdirectory, but the
+  # source path still refers to the Gemfile that spelled it out.
+  def test_installs_through_a_wrapper_gemfile_in_a_subdirectory
+    wrapper = File.join(@app, 'wrapper', 'Gemfile')
+    FileUtils.mkdir(File.dirname(wrapper))
+    File.write(wrapper, %(eval_gemfile(File.expand_path("../Gemfile", __dir__))\n))
+    env = { 'BUNDLE_GEMFILE' => wrapper }
+
+    bundle 'install', env: env
+
+    assert_path_exists File.join(@app, 'mygem', 'lib', 'mygem', "mygem_native.#{RbConfig::CONFIG["DLEXT"]}")
+    assert_equal 'built', built_marker(env: env)
+  end
+
   # A single source can cover multiple gem directories through a glob
   def test_supports_a_glob_as_the_source_path
     write_gemfile(source_path: './{mygem,another-gem}')
@@ -151,8 +167,8 @@ class IntegrationTest < Minitest::Test
     output == 'false'
   end
 
-  def built_marker
-    bundle('exec', 'ruby', '-e', 'require "mygem"; print MyGemNative::BUILT').strip
+  def built_marker(env: {})
+    bundle('exec', 'ruby', '-e', 'require "mygem"; print MyGemNative::BUILT', env: env).strip
   end
 
   def bundle(*args, env: {})
